@@ -1,0 +1,82 @@
+# name: test/sql/roaring_msisdn.test
+# description: test roaring_msisdn extension
+# group: [sql]
+
+# Require statement will ensure this test is run with this extension loaded
+require roaring_msisdn
+
+# Test MSISDN normalization
+query I
+SELECT msisdn_normalize('+1234567890') as normalized;
+----
+1234567890
+
+query I
+SELECT msisdn_normalize('+1 (234) 567-890') as normalized;
+----
+1234567890
+
+query I
+SELECT msisdn_normalize('invalid') as normalized;
+----
+0
+
+# Test bitmap aggregate functionality
+query T
+CREATE TABLE test_msisdns (msisdn VARCHAR);
+----
+
+query T
+INSERT INTO test_msisdns VALUES 
+    ('+1234567890'),
+    ('+1 (234) 567-890'),
+    ('+9876543210'),
+    ('+1234567890'),
+    ('invalid'),
+    ('+5555555555');
+----
+
+# Test bitmap aggregation
+query T
+SELECT bitmap_cardinality(bitmap_agg(msisdn_normalize(msisdn))) as total_unique_msisdns
+FROM test_msisdns;
+----
+
+# Test bitmap operations
+query T
+WITH normalized AS (
+    SELECT msisdn_normalize(msisdn) as norm_msisdn 
+    FROM test_msisdns 
+    WHERE msisdn_normalize(msisdn) > 0
+),
+bitmap1 AS (
+    SELECT bitmap_agg(norm_msisdn) as bm1 
+    FROM normalized 
+    WHERE norm_msisdn IN (1234567890, 9876543210)
+),
+bitmap2 AS (
+    SELECT bitmap_agg(norm_msisdn) as bm2 
+    FROM normalized 
+    WHERE norm_msisdn IN (1234567890, 5555555555)
+)
+SELECT 
+    bitmap_cardinality(bm1) as count1,
+    bitmap_cardinality(bm2) as count2,
+    bitmap_cardinality(bitmap_intersection(bm1, bm2)) as intersection_count,
+    bitmap_cardinality(bitmap_union(bm1, bm2)) as union_count,
+    bitmap_cardinality(bitmap_difference(bm1, bm2)) as difference_count
+FROM bitmap1, bitmap2;
+----
+
+# Test bitmap_has function
+query T
+WITH test_bitmap AS (
+    SELECT bitmap_agg(msisdn_normalize(msisdn)) as bm
+    FROM test_msisdns
+    WHERE msisdn_normalize(msisdn) > 0
+)
+SELECT 
+    bitmap_has(bm, msisdn_normalize('+1234567890')) as has_1234567890,
+    bitmap_has(bm, msisdn_normalize('+9999999999')) as has_9999999999
+FROM test_bitmap;
+----

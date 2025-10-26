@@ -1,30 +1,41 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.8.12...3.29)
 
-# Set extension name here
-set(TARGET_NAME quack)
+project(RoaringMsisdnExtension)
 
-# DuckDB's extension distribution supports vcpkg. As such, dependencies can be added in ./vcpkg.json and then
-# used in cmake with find_package. Feel free to remove or replace with other dependencies.
-# Note that it should also be removed from vcpkg.json to prevent needlessly installing it..
-find_package(OpenSSL REQUIRED)
+# Find system CRoaring library (from Homebrew)
+find_path(ROARING_INCLUDE_DIR 
+    NAMES roaring64.h
+    PATHS /opt/homebrew/include /usr/local/include /usr/include
+    PATH_SUFFIXES roaring
+    REQUIRED
+)
 
-set(EXTENSION_NAME ${TARGET_NAME}_extension)
-set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
+find_library(ROARING_LIBRARIES 
+    NAMES roaring
+    PATHS /opt/homebrew/lib /usr/local/lib /usr/lib
+    REQUIRED
+)
 
-project(${TARGET_NAME})
 include_directories(src/include)
+include_directories(${ROARING_INCLUDE_DIR})
+include_directories(${ROARING_INCLUDE_DIR}/..)
 
-set(EXTENSION_SOURCES src/quack_extension.cpp)
+set(ROARING_MSISDN_EXTENSION_FILES
+    src/roaring_msisdn_extension.cpp
+    src/msisdn.cpp
+    src/bitmap_funcs.cpp
+    src/common.cpp
+)
 
-build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
-build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
+build_static_extension(roaring_msisdn ${ROARING_MSISDN_EXTENSION_FILES})
+build_loadable_extension(roaring_msisdn " " ${ROARING_MSISDN_EXTENSION_FILES})
 
-# Link OpenSSL in both the static library as the loadable extension
-target_link_libraries(${EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
+# Link CRoaring library
+target_link_libraries(roaring_msisdn_extension ${ROARING_LIBRARIES})
+target_link_libraries(roaring_msisdn_loadable_extension ${ROARING_LIBRARIES})
 
 install(
-  TARGETS ${EXTENSION_NAME}
+  TARGETS roaring_msisdn_extension
   EXPORT "${DUCKDB_EXPORT_SET}"
   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
   ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
